@@ -2,6 +2,7 @@
 import discord
 from discord.ext import commands
 from time import sleep
+import DGui
 print(discord.version_info)
 
 def sortDict(dicti):
@@ -12,25 +13,47 @@ def sortDict(dicti):
 		ret_arr.append((dicti[word],word))	
 	ret_arr.sort(reverse=True)
 	return ret_arr
-class poll:
-	#this is a global array that is shared by each poll object
+
+class poll(DGui.gui):
 	polls = []
-	def __init__(self,name,question,options):
+	def __init__(self,name,question,options):	
 		self.name = name
-		self.prompt = 'poll-' + self.name + ':'
 		self.question = question
-		
+
 		#options is a list of tuples where the first tupple is the text you want to vote for
 		#and the second is the reaction emoji that you use
 		self.options = options	
 		self.votes = {}
-		for option in options:
+		for emoji in options:
 			#initilize the voting options
-			self.votes[option[1]] = 0
+			self.votes[emoji] = 0
 		
+		emojiL = []
+		for emoji in options:
+			emojiL.append(emoji)
+		#run the main init of the gui class for the poll
+		DGui.gui.__init__(self,emojiL)	
 		self.voters = []
-		self.polls.append(self)
+		self.windows += [poll.promptWind,poll.listVotes]
+		self.revote = True
+
+		poll.polls.append(self)
+
+	def promptWind(self):
+		ret_val = ''
+		if self.name != None:
+			ret_val += self.name + ':\n\n'
+		ret_val += self.question
+		return ret_val
+	def listVotes(self):
+		#this is a window function that displays the things to vote for 
+		ret_val = 'votes:\n'	
+		votes = sortDict(self.votes)
+		for vote in votes:
+			ret_val += self.options[vote[1]] + ':' + vote[1] + ' ' + str(vote[0]) + '\n'
+		return ret_val[:-1]
 	def toStr(self):
+		#this will need to be replaced with the window function
 		ret_val = self.prompt + '\n'
 		ret_val += '---------------------' + '\n\n\t\t'
 		split_q = self.question.split('\n')
@@ -42,24 +65,52 @@ class poll:
 			ret_val += tup[1] + ':' + str(tup[0]) + ' '
 		return ret_val
 	def addVote(self,emoji,author_id):
-		#this function takes an emoji and mapps it to the votes
-		print('[*] running the voting function\n' + '-'*10)
-		if author_id in self.voters:
-			print(str(author_id) + ' has already voted')	
-			return False	
-		elif emoji in self.votes:
+		#this function takes an emoji and mapps it to the votes	
+		for i in range(0,len(self.voters)):
+			if self.voters[i][0] == author_id:
+				if self.voters[i][1] == emoji:
+					#they attempted to vote for the same thing twice
+					return False
+				elif self.revote == True:
+					self.votes[emoji] += 1
+					self.votes[self.voters[i][1]] -= 1
+					self.voters[i][1] = emoji
+					return True
+		if emoji in self.votes:
 			print('[*] voting as ' + str(author_id))
 			self.votes[emoji] += 1
 			print('[*] ' + str(self.votes))
-			self.voters.append(author_id)
+			self.voters.append([author_id,emoji])
 			return True
 		else:
-			return False  
+			return False
+	def update(self,reaction,user):
+		#on update add the given vote to the user
+		return self.addVote(reaction.emoji,user.id)
 	def getPollName(name):
 		for p in poll.polls:
 			if p.name == name:
 				return p
 		return None
+class Lister(DGui.gui):
+	def __init__(self,emojiL):
+		DGui.gui.__init__(self,emojiL)	
+		self.index = 0
+		self.windows.append(Lister.listpolls)
+	def listpolls(self):
+		ret_val = ''
+		sl = poll.polls[self.index:self.index+5]
+		for i in range(0,len(sl)):
+			ret_val +=  str(i+1) + ':' + sl[i].name + '\n'
+		return ret_val[:-1]
+	def update(self,reaction,user):
+		if reaction.emoji == '➕':
+			#they want to incriment the index
+			self.index = (self.index + 5) % len(poll.polls)
+		elif reaction.emoji == '1⃣':
+			print('update returning ' + str(poll.polls[self.index].Id))			
+			return poll.polls[self.index].Id		
+lister = Lister(['1⃣','2⃣','3⃣','4⃣','5⃣','➕'])
 def get_token(fname='token.txt'):
 	f = open(fname,'r')
 	token = f.readline()
@@ -71,25 +122,16 @@ clientId = int(get_token('client.txt'))
 @bot.command()
 async def addPoll(ctx,*args):
 	#the next command will be the message to place
-	fields = []
+	fields = {}
 	for arg in args[2:]:
 		split_a = arg.split(':')
 		if len(split_a) > 1:
-			fields.append((split_a[0],split_a[1]))
+			fields[split_a[1]] = split_a[0]
 	p = poll(args[0],args[1],fields)
-	msg = await ctx.send(p.toStr())
-	for react in p.options:
-		await msg.add_reaction(react[1])
-	#await ctx.send('added poll!')
+	await p.addSelf(ctx)	
 @bot.command()
 async def listPolls(ctx,*args):
-	resp = ''
-	for p in poll.polls:
-		#dont await a bunch of responces, add them to a variable and then await
-		resp += p.name + '\n'
-	if len(resp) == 0:
-		resp = 'no polls found :(' 
-	await ctx.send(resp)
+	await lister.add(ctx)
 @bot.command()
 async def ping(ctx):
 	await ctx.send('pong')
@@ -117,29 +159,9 @@ async def summon(ctx,*args):
 async def on_ready():
 	print('[*] connected to discord!')
 @bot.event
-async def on_reaction_add(reaction, user):	
-	print('COUNT ' + str(reaction.count))
-	if reaction.message.author.id == clientId: 
-		print('[*] I made that message!')
-		
-		#this is the syntax that this if statement is looking for
-		#poll-<name>:<poll description>	
-		if user.id != clientId:	
-			split_m = reaction.message.content.split(':')
-			if len(split_m[0]) > 5 and len(split_m) > 1 and split_m[0].split('-')[0] == 'poll':
-				#we have a valid poll
-				p = poll.getPollName(split_m[0].split('-')[1])
-				p.addVote(reaction.emoji,user.id)
-				
-				#update the poll
-				#TODO: need to update every message in the cache that changes so all polls are up to date
-				if reaction.count > 1:
-					await reaction.message.remove_reaction(reaction.emoji,user)
-				#TODO: add a reaciton removal system await reaction.message.remove_reaction(reaction.emoji,'a')
-				await reaction.message.edit(content=p.toStr())
-			#print(p.votes)
-			#print(reaction.message.content)
-			
-
+async def on_reaction_add(reaction, user):
+	#check the gui	
+	print(reaction.emoji)
+	await DGui.checkGui(clientId,reaction,user)
 bot.run(get_token())
 #we need to find a way to allow ppl to chose with reactions
