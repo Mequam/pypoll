@@ -74,18 +74,6 @@ class poll(DGui.gui):
 				ret_val += str(vote[0])
 			ret_val += '\n'
 		return ret_val[:-1]
-	def toStr(self):
-		#this will need to be replaced with the window function
-		ret_val = self.prompt + '\n'
-		ret_val += '---------------------' + '\n\n\t\t'
-		split_q = self.question.split('\n')
-		for q in split_q:
-			ret_val += q + '\n' + '\t\t'
-		tList = sortDict(self.votes)
-		ret_val += '\n---------------------\nvotes: '
-		for tup in tList:
-			ret_val += tup[1] + ':' + str(tup[0]) + ' '
-		return ret_val
 	def addVote(self,emoji,author_id,username=None):
 		#this function takes an emoji and mapps it to the votes	
 		for i in range(0,len(self.voters)):
@@ -121,6 +109,7 @@ class Lister(DGui.gui):
 	def __init__(self,emojiL):
 		DGui.gui.__init__(self,emojiL)	
 		self.index = 0
+		self.id = 0
 		self.windows.append(Lister.listpolls)
 	def listpolls(self):
 		ret_val = ''
@@ -129,6 +118,8 @@ class Lister(DGui.gui):
 			ret_val +=  str(i+1) + ':' + sl[i].name + '\n'
 		return ret_val[:-1]
 	def update(self,reaction,user):
+		if user.id != self.id:
+			return True
 		if reaction.emoji == '➡':
 			#they want to incriment the index
 			self.index += 5
@@ -154,8 +145,106 @@ class Lister(DGui.gui):
 			return poll.polls[self.index+4].Id	
 		else:
 			return True
+class Helper(DGui.gui):
+	def __init__(self,emojiL):
+		Lister.__init__(self,emojiL)
+		self.index = 0
 
+		#this is the index of the help page that we want to view
+		self.page = 0
+		self.windows = [Helper.listpages,Helper.showPage]
+		self.pages = []
+	def listpages(self):
+		ret_val = ''
+		sl = self.pages[self.index:self.index+5]
+		for i in range(0,len(sl)):
+			ret_val +=  str(i+1) + ':' + sl[i][0] + '\n'
+		return ret_val[:-1]
+	def showPage(self):
+		ret_val = (' ' * 2) + self.pages[self.page][0] + '\n' + (' - ' * 6) + '\n'
+		ret_val += self.pages[self.page][1]
+		return ret_val
+	def update(self,reaction,user):
+		if reaction.emoji == '➡':
+			#they want to incriment the index
+			self.index += 5
+			if self.index > len(self.pages):
+				#start around at the begining if we go over
+				self.index = 0
+			return True
+		elif reaction.emoji == '⬅':
+			self.index -= 5
+			if self.index < 0:
+				self.index = len(self.pages) - 1
+			return True
+		elif reaction.emoji == '1⃣':
+			self.page = self.index
+		elif reaction.emoji == '2⃣':
+			if self.index + 1 < len(self.pages):
+				self.page = self.index+1
+		elif reaction.emoji == '3⃣':
+			if self.index + 2 < len(self.pages):
+				self.page = self.index+2
+		elif reaction.emoji == '4⃣':
+			if self.index + 3 < len(self.pages):
+				self.page = self.index+3
+		elif reaction.emoji =='5⃣':
+			if self.index + 4 < len(self.pages):
+				self.page = self.index+4	
+		return True
 lister = Lister(['⬅','1⃣','2⃣','3⃣','4⃣','5⃣','➡'])
+helper = Helper(['⬅','1⃣','2⃣','3⃣','4⃣','5⃣','➡'])
+helper.pages.append(['help - summon this help page','click the number you want to select and the arrows to move around\nits that simple! '])
+helper.pages.append(['addpoll - add a poll to the list of active polls',
+'''
+general:
+	this command takes a list of flags for how the poll should be conducted
+	followed by the question that the poll wants to ask and a list of options and emojies
+	people to vote on
+syntax:
+	addpoll [flags] <"poll text"> [option:emoji [option:emoji [option:emoji...]]]
+	
+	flags
+	----------
+	-name		set the poll name for the poll list, defaults to the desc if not specified
+	-perc		toggles percentile output for the votes
+	-revote		allows voters to change their vote
+	-showvote	shows who voted (but not for what)
+
+examples:
+	say we want to make a poll where we vote on everyones favorite apple
+	we could use the following example:
+	
+		addpoll "what is your favorite apple color" green::green_apple: red::apple:
+	
+	now anyone can vote for an apple color, but be careful! once you vote with
+	this poll you cannot change your vote! 
+	
+	since apples are really no big deal, and it wont hurt anything to let people 
+	change their vote after the fact we'll add the following flag to our command
+		
+		addpoll -revote "what is your favorite apple color" green::green_apple: red::apple:
+	
+	so now that flags effect takes place on the vote and any person who wants to change their vote 
+	can go ahead and do that
+
+	any of the flags listed above can be added this way (and any number of them too!) 
+	so long as they are placed BEFORE the text description of the vote
+'''])
+helper.pages.append(['listpolls - list and summon polls',
+'''general:
+	this command is used to list the polls that are currently active
+	and to pull up their gui so you can still vote on them even if you were not
+	their when they were made
+syntax:
+	listpolls
+	
+	once you have the gui their simply use the numbers to select the poll that you want
+	and the arrows to scroll between polls that exist
+
+NOTE: once a poll is selected it will replace the list gui 
+'''])
+helper.pages.append(['ping - ping the bot','make sure the bot is online with a friendly game of ping pong'])
 def get_token(fname='token.txt'):
 	f = open(fname,'r')
 	token = f.readline()
@@ -163,7 +252,9 @@ def get_token(fname='token.txt'):
 	return token[:-1]
 	
 bot = commands.Bot(command_prefix='pypoll ')
+bot.remove_command('help')
 clientId = int(get_token('client.txt'))
+
 @bot.command()
 async def addpoll(ctx,*args):
 	#the next command will be the message to place
@@ -182,10 +273,10 @@ async def addpoll(ctx,*args):
 			question = args[i]
 			break
 		elif args[i] == '-name':
-			print('[DEBUG] found -name')
+			#print('[DEBUG] found -name')
 			if len(args) > i + 1:
 				name = args[i + 1]
-				print('[DEBUG] incrimenting i')
+			#	print('[DEBUG] incrimenting i')
 				i += 1
 		elif args[i] == '-revote':
 				revote = True
@@ -212,31 +303,16 @@ async def addpoll(ctx,*args):
 	p.noName = noName
 	await p.addSelf(ctx)	
 @bot.command()
-async def listPolls(ctx,*args):
+async def listpolls(ctx,*args):
+	lister.id = ctx.author.id
 	await lister.add(ctx)
+@bot.command()
+async def help(ctx,*args):
+	helper.id = ctx.author.id
+	await helper.add(ctx)
 @bot.command()
 async def ping(ctx):
 	await ctx.send('pong')
-@bot.command()
-async def test(ctx):	
-	print(ctx.message.reactions)
-@bot.command()
-async def echo(ctx,*args):
-	ret_val = ''
-	for arg in args:
-		ret_val += arg + ' '
-	msg = await ctx.send(ret_val)
-@bot.command()
-async def summon(ctx,*args):
-	sent = ''
-	for word in args:
-		sent += word + ' '
-	#remove the last space
-	sent = sent[:-1]
-	p = poll.getPollName(sent)
-	msg = await ctx.send(p.toStr())
-	for react in p.options:
-		await msg.add_reaction(react[1])
 @bot.event
 async def on_ready():
 	print('[*] connected to discord!')
@@ -246,4 +322,3 @@ async def on_reaction_add(reaction, user):
 	print(reaction.emoji)
 	await DGui.checkGui(clientId,reaction,user)
 bot.run(get_token())
-#we need to find a way to allow ppl to chose with reactions
