@@ -245,15 +245,12 @@ syntax:
 NOTE: once a poll is selected it will replace the list gui 
 '''])
 helper.pages.append(['ping - ping the bot','make sure the bot is online with a friendly game of ping pong'])
-def get_token(fname='discord_token.txt'):
-	f = open(fname,'r')
-	token = f.readline()
-	f.close()
-	return token[:-1]
-	
+def get_token(env='token'):
+	import os
+	return os.environ[env]	
 bot = commands.Bot(command_prefix='pypoll ')
 bot.remove_command('help')
-clientId = int(get_token('client.txt'))
+clientId = int(get_token('clientId'))
 
 @bot.command()
 async def addpoll(ctx,*args):
