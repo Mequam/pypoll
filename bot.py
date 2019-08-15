@@ -245,7 +245,7 @@ syntax:
 NOTE: once a poll is selected it will replace the list gui 
 '''])
 helper.pages.append(['ping - ping the bot','make sure the bot is online with a friendly game of ping pong'])
-def get_token(fname='token.txt'):
+def get_token(fname='discord_token.txt'):
 	f = open(fname,'r')
 	token = f.readline()
 	f.close()
